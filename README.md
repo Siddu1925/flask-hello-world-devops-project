@@ -10,8 +10,6 @@ In this project, we are going to build a simple [CI/CD](https://www.atlassian.co
 * Docker
 * Git and Github
 * Jenkins
-* Kubernetes
-* Linux machine
  
 ## Steps in the CI/CD pipeline
 1. Create a "Hello world" Flask application
@@ -21,9 +19,6 @@ In this project, we are going to build a simple [CI/CD](https://www.atlassian.co
 5. Create a github repository and push code to it
 6. Start a Jenkins server on a host
 7. Write a Jenkins pipeline to build, test and push the docker image to Dockerhub.
-8. Set up Kubernetes on a host using [Minikube](https://minikube.sigs.k8s.io/docs/start/)
-9. Create a Kubernetes deployment and service for the application.
-10. Use Jenkins to deploy the application on Kubernetes
  
 ## Project structure
  
@@ -32,24 +27,15 @@ In this project, we are going to build a simple [CI/CD](https://www.atlassian.co
 * requirements.txt - Contains dependencies for the project
 * Dockerfile - Contains commands to build and run the docker image
 * Jenkinsfile - Contains the pipeline script which will help in building, testing and deploying the application
-* deployment.yaml - [Kubernetes deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) file for the application
-* service.yaml - [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) file for the application
  
 ## Create a project repository on Github
  
 Login to your github account and create a new repository. Do make sure that you have given a unique name for the repository. It's good to add a README file, Python .gitignore template and choose a licence.
  
-![create-github-repo](images/create_github_repo_border.png)
- 
-Click on "create repository". Now, the repository is created.
- 
-![github-repo](images/github_repo_border.png)
- 
 ## Clone the repository on your system
  
 Go to your Github repository. Click on the "Code" section and note down the HTTPS url for the project.
  
-![clone-url](images/clone_url_border.png)
  
 Open terminal on your local machine(Desktop/laptop) and run the below commands.
  
@@ -107,11 +93,11 @@ python app.py
  
 You should see the output below after running the above command.
  
-![run-app](images/run_app_border.png)
  
-Open your browser and visit [](http://127.0.0.1:5000). You should see "Hello world" printed on the browser.
+Open your browser and visit [](http:/http://35.183.50.15:5000). You should see "Hello world" printed on the browser.
  
-![hello-world-browser](images/hello_world_browser_border.png)
+<img width="1366" height="768" alt="2025-10-24" src="https://github.com/user-attachments/assets/5c3d0f80-a7ca-4da9-893b-5d770d755b10" />
+
  
 ## Write test cases using pytest
  
@@ -173,7 +159,6 @@ Create a file named "Dockerfile" and add the below code.
  
 ```
 FROM python:3.6
-MAINTAINER Shivam Mitra "shivamm389@gmail.com" # Change the name and email address
 COPY app.py test.py /app/
 WORKDIR /app
 RUN pip install flask pytest flake8 # This downloads all the dependencies
@@ -194,8 +179,14 @@ docker run -it -p 5000:5000 flask-hello-world
  
 Run test case
  
-```bash
-docker run -it flask-hello-world pytest test.py
+```stage('Test') {
+            steps {
+                echo 'Running tests...'
+                sh 'docker stop ${CONTAINER_NAME} || true'
+                sh 'docker rm ${CONTAINER_NAME} || true'
+                sh 'docker run --name ${CONTAINER_NAME} ${IMAGE_NAME}:${IMAGE_TAG} /bin/bash -c "pytest test.py && flake8"'
+            }
+        }
 ```
  
 Run flake8 tests
@@ -218,11 +209,7 @@ docker push shivammitra/flask-hello-world
  
 Till now, we haven't pushed the code to our remote repository. Let's try some basic git commands to push the code.
  
-```bash
-git add .
-git commit -m "Add flask hello world application, test cases and dockerfile"
-git push origin main
-```
+
  
 If you go to the github repository, you should see the changes.
  
@@ -353,270 +340,211 @@ Now, create a new file named "Jenkins" in our local code repository and add the 
  
 ```
 pipeline {
-   agent any
-  
-   environment {
-       DOCKER_HUB_REPO = "shivammitra/flask-hello-world"
-       CONTAINER_NAME = "flask-hello-world"
- 
-   }
-  
-   stages {
-       /* We do not need a stage for checkout here since it is done by default when using the "Pipeline script from SCM" option. */
-      
- 
-       stage('Build') {
-           steps {
-               echo 'Building..'
-               sh 'docker image build -t $DOCKER_HUB_REPO:latest .'
-           }
-       }
-       stage('Test') {
-           steps {
-               echo 'Testing..'
-               sh 'docker stop $CONTAINER_NAME || true'
-               sh 'docker rm $CONTAINER_NAME || true'
-               sh 'docker run --name $CONTAINER_NAME $DOCKER_HUB_REPO /bin/bash -c "pytest test.py && flake8"'
-           }
-       }
-       stage('Deploy') {
-           steps {
-               echo 'Deploying....'
-               sh 'docker stop $CONTAINER_NAME || true'
-               sh 'docker rm $CONTAINER_NAME || true'
-               sh 'docker run -d -p 5000:5000 --name $CONTAINER_NAME $DOCKER_HUB_REPO'
-           }
-       }
-   }
+    agent any
+
+    environment {
+        IMAGE_NAME = 'siddu'
+        IMAGE_TAG = 'v1.0'
+        CONTAINER_NAME = 'jenkinscicd'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Siddu1925/flask-hello-world-devops-project.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building Docker image...'
+                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                sh 'docker stop ${CONTAINER_NAME} || true'
+                sh 'docker rm ${CONTAINER_NAME} || true'
+                sh 'docker run --name ${CONTAINER_NAME} ${IMAGE_NAME}:${IMAGE_TAG} /bin/bash -c "pytest test.py && flake8"'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'Dockerhubcredential', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} $DOCKER_USER/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push $DOCKER_USER/${IMAGE_NAME}:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+    }
 }
+
 ```
- 
-Push the code to github.
- 
-```bash
-git add .
-git commit -m "Add Jenkinsfile"
-git push origin main
-```
- 
-Go to "flask-hello-world" pipeline page and click on "Build Now"
- 
-![jenkins-build-scm](images/jenkins_build_scm_border.png)
- 
-## Install Kubernetes
- 
-In this example, we will be installing kubernetes on Ubuntu 20.04 Linux machine using minikube. If you are on cloud, you can create a new instance and install kubernetes on that.
- 
-```bash
-# https://minikube.sigs.k8s.io/docs/start/
- 
-# Install docker for managing containers
-sudo apt-get install docker.io
- 
-# Install minikube
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-sudo install minikube-linux-amd64 /usr/local/bin/minikube
- 
-# Add the current USER to docker group
-sudo usermod -aG docker $USER && newgrp docker
- 
-# Start minikube cluster
-minikube start
- 
-# Add an alias for kubectl command
-alias kubectl="minikube kubectl --"
-```
- 
-Create a new file named "deployment.yaml" in your project and add the below code.
- 
-```
-apiVersion: apps/v1
-kind: Deployment
-metadata:
- name: flask-hello-deployment # name of the deployment
- 
-spec:
- template: # pod defintion
-   metadata:
-     name: flask-hello # name of the pod
-     labels:
-       app: flask-hello
-       tier: frontend
-   spec:
-     containers:
-       - name: flask-hello
-         image: shivammitra/flask-hello-world:latest
- replicas: 3
- selector: # Mandatory, Select the pods which needs to be in the replicaset
-   matchLabels:
-     app: flask-hello
-     tier: frontend
-```
- 
-Test the deployment manually by running the following command:
- 
-```bash
-$ kubectl apply -f deployment.yaml
-deployment.apps/flask-hello-deployment created
-$ kubectl get deployments flask-hello-deployment
-NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
-flask-hello-deployment   3/3     3            3           45s
-```
- 
-Create a new file named "service.yaml" and add the following code
- 
-```
-apiVersion: v1
-kind: Service
-metadata:
- name: flask-hello-service-nodeport # name of the service
- 
-spec:
- type: NodePort # Used for accessing a port externally
- ports:
-   - port: 5000 # Service port
-     targetPort: 5000 # Pod port, default: same as port
-     nodePort: 30008 # Node port which can be used externally, default: auto-assign any free port
- selector: # Which pods to expose externally ?
-   app: flask-hello
-   tier: frontend
-```
- 
-Test the service manually by running below commands.
- 
-```bash
-$ kubectl apply -f service.yaml
-service/flask-hello-service-nodeport created
-$ kubectl get service flask-hello-service-nodeport
-NAME                           TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
-flask-hello-service-nodeport   NodePort   10.110.46.59   <none>        5000:30008/TCP   36s
-```
- 
-Run below command to access the application on the browser.
- 
-```bash
-minikube service flask-hello-service-nodeport
-```
- 
-![kubernetes-service](images/kubernetes_service_border.png)
- 
-Finally, push the updated code to github.
- 
-```bash
-git add .
-git commit -m "Add kubernetes deployment and service yaml"
-git push origin main
-```
- 
-## Deploy using jenkins on kubernetes
- 
-First, we will add our docker hub credential in jenkins. This is needed as we have to first push the docker image before deploying on kubernetes.
- 
-Open jenkins credentials page.
- 
-![open-jenkins-credentials](images/open_jenkins_credentials_border.png)
- 
-Click on 'global'.
- 
-![jenkins-global-credentials](images/jenkins_global_credentials_border.png)
- 
-Add the credentials for docker hub account.
- 
-![add-jenkins-credentials](images/add_jenkins_credentials_border.png)
- 
-We will now modify our Jenkinsfile in the project to push the image and then deploy the application on kubernetes.
- 
-```
-pipeline {
-   agent any
-  
-   environment {
-       DOCKER_HUB_REPO = "shivammitra/flask-hello-world"
-       CONTAINER_NAME = "flask-hello-world"
-       DOCKERHUB_CREDENTIALS=credentials('dockerhub-credentials')
-   }
-  
-   stages {
-       /* We do not need a stage for checkout here since it is done by default when using "Pipeline script from SCM" option. */
-      
-       stage('Build') {
-           steps {
-               echo 'Building..'
-               sh 'docker image build -t $DOCKER_HUB_REPO:latest .'
-           }
-       }
-       stage('Test') {
-           steps {
-               echo 'Testing..'
-               sh 'docker stop $CONTAINER_NAME || true'
-               sh 'docker rm $CONTAINER_NAME || true'
-               sh 'docker run --name $CONTAINER_NAME $DOCKER_HUB_REPO /bin/bash -c "pytest test.py && flake8"'
-           }
-       }
-       stage('Push') {
-           steps {
-               echo 'Pushing image..'
-               sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
-               sh 'docker push $DOCKER_HUB_REPO:latest'
-           }
-       }
-       stage('Deploy') {
-           steps {
-               echo 'Deploying....'
-               sh 'minikube kubectl -- apply -f deployment.yaml'
-               sh 'minikube kubectl -- apply -f service.yaml'
-           }
-       }
-   }
-}
-```
- 
-Commit the changes to github.
- 
-```bash
-git add .
-git commit -m "Modify Jenkinsfile to deploy on kubernetes"
-git push origin main
-```
- 
-Go to "flask-hello-world" pipeline page and click on "Build Now"
- 
-![jenkins-deploy-kubernetes](images/jenkins_deploy_kubernetes_border.png)
- 
-## Is the Kubernetes host different from the jenkins host ?
- 
-In case you have set up kubernetes on a different virtual machine, we will need to ssh to this machine from jenkins machine, copy the deployment and service files and then run kubernetes commands.
- 
-Create a ssh key pair on jenkins server.
- 
-```bash
-$ cd ~/.ssh # We are on jenkins server
-$ ssh-keygen -t rsa # select the default options
-$ cat id_rsa.pub # Copy the public key
-```
- 
-Add the public key we created to authorized_keys on kubernetes server.
- 
-```bash
-$ cd ~/.ssh # We are on kubernetes server
-$ echo "<public key>" >> authorized_keys
-```
- 
-Modify the 'Deploy' section of Jenkinsfile. Replace <username> and <ip address> with the username and ip address of kubernetes host respectively.
- 
-```
-stage('Deploy') {
-   steps {
-       echo 'Deploying....'
-       sh 'scp -r -o StrictHostKeyChecking=no deployment.yaml service.yaml < username>@<ip address>:~/'
- 
-       sh 'ssh <username><ip address> kubectl apply -f ~/deployment.yaml'
-       sh 'ssh <username><ip address> kubectl apply -f ~/service.yaml'
-   }
-}
-```
- 
-Commit the code. Build the pipeline again on Jenkins server.
+ Console Output
+Download
+
+Copy
+View as plain text
+Started by user root
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/lib/jenkins/workspace/flaskcicd
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout)
+[Pipeline] git
+The recommended git tool is: NONE
+No credentials specified
+ > git rev-parse --resolve-git-dir /var/lib/jenkins/workspace/flaskcicd/.git # timeout=10
+Fetching changes from the remote Git repository
+ > git config remote.origin.url https://github.com/Siddu1925/flask-hello-world-devops-project.git # timeout=10
+Fetching upstream changes from https://github.com/Siddu1925/flask-hello-world-devops-project.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.43.0'
+ > git fetch --tags --force --progress -- https://github.com/Siddu1925/flask-hello-world-devops-project.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+Checking out Revision 333166ba89c0b6d1aad28c9ec3f6b0837e28e5d0 (refs/remotes/origin/main)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 333166ba89c0b6d1aad28c9ec3f6b0837e28e5d0 # timeout=10
+ > git branch -a -v --no-abbrev # timeout=10
+ > git branch -D main # timeout=10
+ > git checkout -b main 333166ba89c0b6d1aad28c9ec3f6b0837e28e5d0 # timeout=10
+Commit message: "Remove maintainer line from Dockerfile"
+ > git rev-list --no-walk 333166ba89c0b6d1aad28c9ec3f6b0837e28e5d0 # timeout=10
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Build)
+[Pipeline] echo
+Building Docker image...
+[Pipeline] sh
++ docker build -t siddu:v1.0 .
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 193B 0.0s done
+#1 DONE 0.0s
+
+#2 [auth] library/python:pull token for registry-1.docker.io
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.6
+#3 DONE 0.4s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2B done
+#4 DONE 0.0s
+
+#5 [1/4] FROM docker.io/library/python:3.6@sha256:f8652afaf88c25f0d22354d547d892591067aa4026a7fa9a6819df9f300af6fc
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 55B done
+#6 DONE 0.0s
+
+#7 [2/4] COPY app.py test.py /app/
+#7 CACHED
+
+#8 [3/4] WORKDIR /app
+#8 CACHED
+
+#9 [4/4] RUN pip install flask pytest flake8 # This downloads all the dependencies
+#9 CACHED
+
+#10 exporting to image
+#10 exporting layers done
+#10 writing image sha256:0cb68055bcdc1acb4f6c8fd744098145d89c820afd11b08ec5fe04142681148d done
+#10 naming to docker.io/library/siddu:v1.0 0.0s done
+#10 DONE 0.0s
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Test)
+[Pipeline] echo
+Running tests...
+[Pipeline] sh
++ docker stop jenkinscicd
+jenkinscicd
+[Pipeline] sh
++ docker rm jenkinscicd
+jenkinscicd
+[Pipeline] sh
++ docker run --name jenkinscicd siddu:v1.0 /bin/bash -c pytest test.py && flake8
+============================= test session starts ==============================
+platform linux -- Python 3.6.15, pytest-7.0.1, pluggy-1.0.0
+rootdir: /app
+collected 1 item
+
+test.py .                                                                [100%]
+
+============================== 1 passed in 0.50s ===============================
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Push to Docker Hub)
+[Pipeline] withCredentials
+Masking supported pattern matches of $DOCKER_PASS
+[Pipeline] {
+[Pipeline] sh
++ echo ****
++ docker login -u siddamallappa --password-stdin
+Login Succeeded
++ docker tag siddu:v1.0 siddamallappa/siddu:v1.0
++ docker push siddamallappa/siddu:v1.0
+The push refers to repository [docker.io/siddamallappa/siddu]
+618323b57964: Preparing
+5f70bf18a086: Preparing
+1dc7ab021a3b: Preparing
+aa4c808c19f6: Preparing
+8ba9f690e8ba: Preparing
+3e607d59ef9f: Preparing
+1e18e7e1fcc2: Preparing
+c3a0d593ed24: Preparing
+26a504e63be4: Preparing
+8bf42db0de72: Preparing
+31892cc314cb: Preparing
+11936051f93b: Preparing
+3e607d59ef9f: Waiting
+1e18e7e1fcc2: Waiting
+c3a0d593ed24: Waiting
+26a504e63be4: Waiting
+8bf42db0de72: Waiting
+31892cc314cb: Waiting
+11936051f93b: Waiting
+aa4c808c19f6: Layer already exists
+1dc7ab021a3b: Layer already exists
+5f70bf18a086: Layer already exists
+8ba9f690e8ba: Layer already exists
+618323b57964: Layer already exists
+1e18e7e1fcc2: Layer already exists
+3e607d59ef9f: Layer already exists
+c3a0d593ed24: Layer already exists
+8bf42db0de72: Layer already exists
+26a504e63be4: Layer already exists
+11936051f93b: Layer already exists
+31892cc314cb: Layer already exists
+v1.0: digest: sha256:339ec13ec709bf436b2dd0051a9e8c8d38d5cf63a5f52366e3051c880ea95a9b size: 2842
+[Pipeline] }
+[Pipeline] // withCredentials
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+Finished: SUCCESS''''''
+
+<img width="1366" height="768" alt="2025-10-24 (3)" src="https://github.com/user-attachments/assets/c5ba1c41-1736-496d-a237-d2cbf263c09a" />
+
  
 ## Conclusion
  
