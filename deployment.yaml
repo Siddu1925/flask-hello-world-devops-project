@@ -1,21 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flask-hello-deployment # name of the deployment
-
+  name: siddu-deployment
 spec:
-  template: # pod defintion
+  replicas: 2  # number of pods
+  selector:
+    matchLabels:
+      app: siddu
+  template:
     metadata:
-      name: flask-hello # name of the pod
       labels:
-        app: flask-hello
-        tier: frontend
+        app: siddu
     spec:
       containers:
-        - name: flask-hello
-          image: shivammitra/flask-hello-world:latest
-  replicas: 3
-  selector: # Mandatory, Select the pods which needs to be in the replicaset
-    matchLabels:
-      app: flask-hello
-      tier: frontend
+      - name: siddu-container
+        image: <DOCKER_HUB_USERNAME>/siddu:v1.0
+        ports:
+        - containerPort: 5000
+        # Optional: environment variables
+        env:
+        - name: FLASK_ENV
+          value: "production"
